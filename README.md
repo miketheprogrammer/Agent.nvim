@@ -112,7 +112,8 @@ Both modules live in the same repo. Install once via nexus-agent; nexus-chat is 
 | `<C-a>` | Switch agent |
 | `<C-m>` | Switch model |
 | `<C-c>` | Stop generation |
-| `@` | Pick a file to mention |
+| `@` | Pick a file by name to mention |
+| `#` | Pick a file by content (ripgrep) to mention |
 | `q` | Close chat |
 
 #### Message panel
