@@ -463,6 +463,10 @@ function RenderState:setup_keymaps(bufnr)
     self:jump_block(-1)
   end, { buffer = bufnr, desc = "Previous block" })
 
+  vim.keymap.set("n", "a", function()
+    require("nexus-chat").focus_input()
+  end, { buffer = bufnr, desc = "Focus chat input" })
+
   -- Setup fold options on any window showing this buffer
   local winnr = self.winnr or vim.fn.bufwinid(bufnr)
   if winnr and winnr ~= -1 and vim.api.nvim_win_is_valid(winnr) then

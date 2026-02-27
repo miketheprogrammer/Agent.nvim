@@ -821,4 +821,15 @@ function M.toggle()
   end
 end
 
+--- Focus the floating input, opening it if it was dismissed.
+function M.focus_input()
+  if not state.input_win or not vim.api.nvim_win_is_valid(state.input_win) then
+    -- Float was dismissed — re-open (recreates the float and focuses it)
+    M.open()
+    return
+  end
+  vim.api.nvim_set_current_win(state.input_win)
+  vim.cmd("startinsert")
+end
+
 return M
