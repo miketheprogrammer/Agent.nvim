@@ -355,6 +355,47 @@ function M.pick_model()
   }):find()
 end
 
+--- Type '@' then open a file picker; insert the chosen filename after the '@'.
+--- On cancel the bare '@' is left in the buffer.
+local function pick_file_mention()
+  local input_win = state.input_win
+  if not input_win or not vim.api.nvim_win_is_valid(input_win) then return end
+  local buf = state.input_buf
+
+  -- Insert '@' at the current cursor position
+  local pos = vim.api.nvim_win_get_cursor(input_win)
+  local row, col = pos[1] - 1, pos[2]
+  vim.api.nvim_buf_set_text(buf, row, col, row, col, { "@" })
+  local after_at = col + 1
+
+  vim.cmd("stopinsert")
+
+  require("telescope.builtin").find_files({
+    attach_mappings = function(prompt_bufnr)
+      local actions     = require("telescope.actions")
+      local action_state = require("telescope.actions.state")
+
+      actions.select_default:replace(function()
+        local entry = action_state.get_selected_entry()
+        actions.close(prompt_bufnr)
+        if state.input_win and vim.api.nvim_win_is_valid(state.input_win) then
+          vim.api.nvim_set_current_win(state.input_win)
+        end
+        if not entry then
+          vim.cmd("startinsert")
+          return
+        end
+        local filename = entry.value
+        vim.api.nvim_buf_set_text(buf, row, after_at, row, after_at, { filename })
+        vim.api.nvim_win_set_cursor(state.input_win, { row + 1, after_at + #filename })
+        vim.cmd("startinsert")
+      end)
+
+      return true
+    end,
+  })
+end
+
 --- Open the chat interface. Idempotent — safe to call multiple times.
 function M.open()
   ensure_deps()
@@ -445,6 +486,9 @@ function M.open()
       vim.cmd("stopinsert")
       M.pick_agent()
     end, { buffer = input_buf, desc = "Pick agent" })
+    vim.keymap.set("i", "@", function()
+      pick_file_mention()
+    end, { buffer = input_buf, desc = "Pick file mention" })
     state._input_keymaps_set = true
   end
 
@@ -463,6 +507,7 @@ function M.open()
       "  `<C-a>`   — switch agent",
       "  `<C-m>`   — switch model",
       "  `<C-c>`   — stop generation",
+      "  `@`       — pick file to mention",
       "  `<Tab>`   — toggle folds",
       "  `q`       — close chat",
       "",
