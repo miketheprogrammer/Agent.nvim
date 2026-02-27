@@ -1,9 +1,9 @@
 # Agent.nvim
 
-A Neovim monorepo containing two lazy.nvim plugins for Claude Code CLI integration:
+Two lazy.nvim plugins for Claude Code CLI integration in Neovim:
 
-- **nexus-agent.nvim** — AI agent SDK: spawn agents, stream responses, manage sessions, MCP, Telescope pickers
-- **nexus-chat.nvim** — Interactive chat UI built on top of nexus-agent, with XML rendering, model/agent switching, and session history
+- **nexus-agent** — AI agent SDK: spawn agents, stream responses, manage sessions, MCP, Telescope pickers
+- **nexus-chat** — Interactive chat UI built on nexus-agent, with XML rendering, model/agent switching, and session history
 
 ## Requirements
 
@@ -15,14 +15,13 @@ A Neovim monorepo containing two lazy.nvim plugins for Claude Code CLI integrati
 
 ## Installation
 
-### From GitHub (recommended)
+Both modules live in the same repo. Install once via nexus-agent; nexus-chat is configured as a virtual plugin (no separate clone needed).
 
 ```lua
--- nexus-agent.nvim
+-- nexus-agent installs the repo and sets up both modules
 {
-  "your-username/Agent.nvim",
+  "miketheprogrammer/agent.nvim",
   name = "nexus-agent",
-  subdir = "nexus-agent.nvim",
   dependencies = {
     "nvim-lua/plenary.nvim",
     "nvim-telescope/telescope.nvim",
@@ -36,6 +35,7 @@ A Neovim monorepo containing two lazy.nvim plugins for Claude Code CLI integrati
       permission_mode = "acceptEdits",
       debug = false,
     })
+    require("nexus-chat").setup()
   end,
   keys = {
     { "<leader>n",  group = "[N]exus Agent" },
@@ -53,15 +53,11 @@ A Neovim monorepo containing two lazy.nvim plugins for Claude Code CLI integrati
   },
 },
 
--- nexus-chat.nvim
+-- nexus-chat: virtual plugin, no install — configured above via nexus-agent
 {
-  "your-username/Agent.nvim",
   name = "nexus-chat",
-  subdir = "nexus-chat.nvim",
+  virtual = true,
   dependencies = { "nexus-agent" },
-  config = function()
-    require("nexus-chat").setup()
-  end,
 },
 ```
 
@@ -69,15 +65,9 @@ A Neovim monorepo containing two lazy.nvim plugins for Claude Code CLI integrati
 
 ```lua
 {
-  dir = "/path/to/Agent.nvim/nexus-agent.nvim",
+  dir = "/path/to/Agent.nvim",
   name = "nexus-agent",
-  -- ... same config as above
-},
-{
-  dir = "/path/to/Agent.nvim/nexus-chat.nvim",
-  name = "nexus-chat",
-  dependencies = { "nexus-agent" },
-  config = function() require("nexus-chat").setup() end,
+  -- same config as above
 },
 ```
 
@@ -90,7 +80,7 @@ A Neovim monorepo containing two lazy.nvim plugins for Claude Code CLI integrati
 | `:NexusAsk [prompt]` | Send a prompt to the default agent |
 | `:NexusRun {agent} {prompt}` | Run a named agent |
 | `:NexusNew` | Create a new agent definition |
-| `:NexusEdit {agent}` | Edit an existing agent |
+| `:NexusEdit {agent}` | Edit an agent definition |
 | `:NexusSessions` | Browse past sessions (Telescope) |
 | `:NexusAgents` | Browse saved agents (Telescope) |
 | `:NexusTools` | Browse registered tools (Telescope) |
@@ -113,6 +103,8 @@ A Neovim monorepo containing two lazy.nvim plugins for Claude Code CLI integrati
 
 ### Chat keybindings
 
+#### Input float
+
 | Key | Action |
 |---|---|
 | `<Enter>` | Send message (normal mode) |
@@ -120,8 +112,16 @@ A Neovim monorepo containing two lazy.nvim plugins for Claude Code CLI integrati
 | `<C-a>` | Switch agent |
 | `<C-m>` | Switch model |
 | `<C-c>` | Stop generation |
-| `<Tab>` | Toggle folds |
 | `q` | Close chat |
+
+#### Message panel
+
+| Key | Action |
+|---|---|
+| `a` | Focus input float (opens it if dismissed) |
+| `<Tab>` | Toggle fold on current block |
+| `]]` | Jump to next block |
+| `[[` | Jump to previous block |
 
 ## Configuration
 
@@ -129,15 +129,15 @@ A Neovim monorepo containing two lazy.nvim plugins for Claude Code CLI integrati
 
 ```lua
 require("nexus-agent").setup({
-  cli_path      = "~/.local/bin/claude", -- Path to Claude Code CLI
-  model         = "sonnet",              -- Default model: "sonnet" | "opus" | "haiku"
-  cache_dir     = "~/.cache/nvim/nexus-agent",
-  permission_mode = "acceptEdits",       -- "acceptEdits" | "bypassPermissions" | "default"
-  system_prompt = nil,                   -- Optional global system prompt
-  allowed_tools = nil,                   -- Optional tool allowlist
-  mcp_servers   = nil,                   -- Optional MCP server config
-  max_turns     = nil,                   -- Optional max turn limit
-  debug         = false,                 -- Enable debug logging
+  cli_path        = "~/.local/bin/claude", -- Path to Claude Code CLI
+  model           = "sonnet",              -- "sonnet" | "opus" | "haiku"
+  cache_dir       = "~/.cache/nvim/nexus-agent",
+  permission_mode = "acceptEdits",         -- "acceptEdits" | "bypassPermissions" | "default"
+  system_prompt   = nil,                   -- Optional global system prompt
+  allowed_tools   = nil,                   -- Optional tool allowlist
+  mcp_servers     = nil,                   -- Optional MCP server config
+  max_turns       = nil,                   -- Optional max turn limit
+  debug           = false,                 -- Enable debug logging
 })
 ```
 
