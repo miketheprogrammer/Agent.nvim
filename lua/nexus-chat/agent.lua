@@ -2,8 +2,9 @@ local M = {}
 
 --- Create the chat agent using nexus-agent public API
 --- @param model? string Short model name ("sonnet", "opus", "haiku"). Default "sonnet".
+--- @param cwd? string Working directory for the Claude subprocess.
 --- @return table Agent instance
-function M.create(model)
+function M.create(model, cwd)
   model = model or "sonnet"
   local nexus = require("nexus-agent.api")
 
@@ -28,6 +29,12 @@ function M.create(model)
     :model(model)
     :permission_mode("acceptEdits")
     :max_turns(25)
+
+  if cwd then
+    chat_agent:cwd(cwd)
+  end
+
+  chat_agent = chat_agent
     -- Block types are registered as defaults by the BlockRegistry.
     -- Custom agents can add their own blocks here, e.g.:
     -- :block({

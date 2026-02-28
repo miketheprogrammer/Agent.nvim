@@ -117,9 +117,10 @@ function M.pick(opts)
         local display_project = project:gsub("^(%a)%-%-", "%1:\\"):gsub("%-", "\\")
         local size = fmt_size(session.size or 0)
 
+        local cwd_basename = vim.fn.fnamemodify(session.cwd or "", ":t")
         local display = string.format(
-          "%-8s  %-7s  %-6s  %-20s  %s",
-          time, model, size, display_project:sub(1, 20), prompt:sub(1, 80)
+          "%-8s  %-7s  %-6s  %-15s  %-20s  %s",
+          time, model, size, cwd_basename:sub(1, 15), display_project:sub(1, 20), prompt:sub(1, 60)
         )
 
         return {

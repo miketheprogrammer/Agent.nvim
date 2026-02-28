@@ -32,6 +32,7 @@ local state = {
   agent_name = nil,     ---@type string? Display name of active agent (nil = "Chat")
   parser = nil,         ---@type nexus_chat.StreamParser? Streaming XML parser
   render = nil,         ---@type nexus_chat.RenderState? Render state
+  cwd = nil,            ---@type string? Working directory for the Claude subprocess
   messages = {},        ---@type table[] Raw messages from the transport (all types)
   _input_keymaps_set = false, ---@type boolean Whether keymaps have been bound
 }
@@ -76,6 +77,7 @@ local function build_title()
   return {
     { " " .. agent_name .. " ", "NexusChatInputTitle" },
     { " " .. model_label() .. " ", "NexusChatInputModel" },
+    { " " .. vim.fn.fnamemodify(state.cwd or "", ":t") .. " ", "NexusChatInputCwd" },
   }
 end
 
@@ -97,7 +99,7 @@ local function build_agent(def, model)
   ensure_deps()
   -- Default chat agent (with XML tag instructions)
   if not def and state.agent_name == "Chat" then
-    return chat_agent_mod.create(model)
+    return chat_agent_mod.create(model, state.cwd)
   end
 
   -- No agent / custom agent — build from definition
@@ -108,6 +110,10 @@ local function build_agent(def, model)
     :model(model)
     :permission_mode(def.permission_mode or "acceptEdits")
     :max_turns(def.max_turns or 25)
+
+  if state.cwd then
+    builder:cwd(state.cwd)
+  end
 
   if def.system_prompt and def.system_prompt ~= "" then
     builder:system_prompt(def.system_prompt)
@@ -133,6 +139,7 @@ function M.setup(opts)
   opts = opts or {}
   ensure_deps()
   if opts.model then state.model = opts.model end
+  if not state.cwd then state.cwd = vim.fn.getcwd() end
   state.agent_name = "Chat"
   state.agent = build_agent(nil, state.model)
 end
@@ -441,6 +448,7 @@ end
 --- Open the chat interface. Idempotent — safe to call multiple times.
 function M.open()
   ensure_deps()
+  if not state.cwd then state.cwd = vim.fn.getcwd() end
 
   -- Create or reuse output buffer
   if not state.chat_buf or not vim.api.nvim_buf_is_valid(state.chat_buf:bufnr()) then
@@ -545,6 +553,8 @@ function M.open()
   if line_count <= 1 and first_line == "" then
     state.chat_buf:_append_lines({
       "# Nexus Chat",
+      "",
+      "**CWD:** " .. (state.cwd or vim.fn.getcwd()),
       "",
       "**Keybindings:**",
       "  `<Enter>` — send message (normal mode)",
@@ -762,9 +772,12 @@ end
 function M.new_session()
   state.session_id = nil
   state.messages = {}
+  state.cwd = vim.fn.getcwd()
+  state.agent = build_agent(state.agent_def, state.model)
   if state.chat_buf and vim.api.nvim_buf_is_valid(state.chat_buf:bufnr()) then
     state.chat_buf:clear()
   end
+  update_input_title()
   vim.notify("New chat session started", vim.log.levels.INFO)
 end
 
@@ -801,6 +814,13 @@ function M.load_session(session_info)
     -- Set session for multi-turn resume
     state.session_id = sid
     state.messages = {}
+
+    -- Restore cwd from session if available
+    if session_info.cwd then
+      state.cwd = session_info.cwd
+      state.agent = build_agent(state.agent_def, state.model)
+      update_input_title()
+    end
 
     -- Clear and reset buffer
     local bufnr = state.chat_buf:bufnr()

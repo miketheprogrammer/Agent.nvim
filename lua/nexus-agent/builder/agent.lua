@@ -51,6 +51,7 @@ function Agent:run(prompt, opts)
     permission_mode = self.permission_mode,
     max_turns = self.max_turns,
     allowed_tools = self.allowed_tools,
+    cwd = self.cwd,
   })
 
   -- Support session resumption (set by Agent:resume())

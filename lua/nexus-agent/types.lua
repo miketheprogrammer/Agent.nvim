@@ -78,6 +78,7 @@
 ---@field allowed_tools? string[] List of allowed tool names
 ---@field mcp_servers? table<string, nexus.McpServerConfig> MCP server configurations
 ---@field max_turns? integer Maximum conversation turns
+---@field cwd? string Working directory for the Claude subprocess
 ---@field debug? boolean Enable debug logging
 
 ---@class nexus.McpServerConfig
