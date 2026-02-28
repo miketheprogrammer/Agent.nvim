@@ -178,15 +178,23 @@ end
 
 --- Internal: append lines with modifiable toggle
 function ChatBuffer:_append_lines(lines)
+  -- Flatten: split any element that contains embedded newlines
+  local flat = {}
+  for _, item in ipairs(lines) do
+    for line in (item .. "\n"):gmatch("([^\n]*)\n") do
+      flat[#flat + 1] = line
+    end
+  end
+
   vim.schedule(function()
     if not vim.api.nvim_buf_is_valid(self._bufnr) then return end
     vim.bo[self._bufnr].modifiable = true
     local count = vim.api.nvim_buf_line_count(self._bufnr)
     local last = vim.api.nvim_buf_get_lines(self._bufnr, -2, -1, false)[1]
     if count == 1 and last == "" then
-      vim.api.nvim_buf_set_lines(self._bufnr, 0, -1, false, lines)
+      vim.api.nvim_buf_set_lines(self._bufnr, 0, -1, false, flat)
     else
-      vim.api.nvim_buf_set_lines(self._bufnr, -1, -1, false, lines)
+      vim.api.nvim_buf_set_lines(self._bufnr, -1, -1, false, flat)
     end
     vim.bo[self._bufnr].modifiable = false
     if self._winnr and vim.api.nvim_win_is_valid(self._winnr) then
