@@ -102,7 +102,18 @@ local function build_agent(def, model)
     return chat_agent_mod.create(model, state.cwd)
   end
 
-  -- No agent / custom agent — build from definition
+  -- Raw agent — no definition, no special instructions
+  if not def then
+    local nexus = require("nexus-agent.api")
+    local builder = nexus.agent()
+      :name("raw")
+      :model(model)
+      :max_turns(25)
+    if state.cwd then builder:cwd(state.cwd) end
+    return builder:build()
+  end
+
+  -- Custom agent — build from definition
   local nexus = require("nexus-agent.api")
   local builder = nexus.agent()
     :name(def.name or "custom")
