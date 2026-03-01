@@ -149,7 +149,11 @@ function RenderState:_start_animation(block)
         if block.timer then block.timer:close(); block.timer = nil end
         return
       end
-      local label = def.active_label .. dots .. string.rep(" ", 3 - #dots)
+      local name_suffix = ""
+      if block.attrs and block.attrs.name then
+        name_suffix = " — " .. block.attrs.name
+      end
+      local label = def.active_label .. name_suffix .. dots .. string.rep(" ", 3 - #dots)
       local hl = registry.hl_group(block.tag, "Header")
 
       if block.header_extmark then
@@ -187,7 +191,7 @@ function RenderState:_update_borders(block)
   end
   block.border_extmarks = {}
 
-  local end_line = vim.api.nvim_buf_line_count(self.bufnr) - 1
+  local end_line = block.end_line or (vim.api.nvim_buf_line_count(self.bufnr) - 1)
   local border_hl = registry.hl_group(block.tag, "Border")
   local bg_hl = registry.hl_group(block.tag, "Bg")
 
@@ -220,11 +224,17 @@ function RenderState:on_tag_open(event)
     -- Add header line (blank, overlaid with virtual text)
     local header_line = buf_append(self.bufnr, { "", "" })
 
+    -- Build suffix from attrs (e.g. " — Read")
+    local suffix = ""
+    if event.attrs and event.attrs.name then
+      suffix = " — " .. event.attrs.name
+    end
+
     -- Create header extmark
     local header_id = vim.api.nvim_buf_set_extmark(self.bufnr, ns, header_line, 0, {
       virt_text = {
         { def.icon, hl },
-        { def.active_label, hl },
+        { def.active_label .. suffix, hl },
       },
       virt_text_pos = "overlay",
       line_hl_group = hl_bg,
@@ -314,6 +324,8 @@ function RenderState:on_tag_close(event)
       local suffix = ""
       if block.attrs and block.attrs.lang then
         suffix = " (" .. block.attrs.lang .. ")"
+      elseif block.attrs and block.attrs.name then
+        suffix = " — " .. block.attrs.name
       elseif block.attrs and block.attrs.title then
         suffix = " — " .. block.attrs.title
       end
@@ -436,6 +448,77 @@ function RenderState:render_block(tag, content, attrs, duration_str)
 
   -- Auto-collapse blocks with collapsed_default
   if def.collapsed_default then
+    self:_collapse(block)
+  end
+end
+
+--- Inject content into a previously-closed (and possibly collapsed) block.
+--- Replaces the empty content area with the given lines, applies highlights,
+--- and shifts all subsequent blocks to account for line count changes.
+---@param block_idx integer 1-based index into self.blocks
+---@param lines string[] Content lines to insert
+---@param highlights? { line: integer, hl: string }[] Per-line highlights (line is 0-based offset within lines)
+function RenderState:inject_block_content(block_idx, lines, highlights)
+  local block = self.blocks[block_idx]
+  if not block or not block.end_line then return end
+  if not vim.api.nvim_buf_is_valid(self.bufnr) then return end
+
+  -- Expand fold if collapsed
+  local was_collapsed = block.collapsed
+  if was_collapsed then
+    self:_expand(block)
+  end
+
+  -- Replace content area (content_start to end_line) with new lines
+  local old_start = block.content_start
+  local old_end = block.end_line
+  local old_count = old_end - old_start + 1
+
+  vim.bo[self.bufnr].modifiable = true
+  vim.api.nvim_buf_set_lines(self.bufnr, old_start, old_end + 1, false, lines)
+  vim.bo[self.bufnr].modifiable = false
+
+  local new_count = #lines
+  local shift = new_count - old_count
+
+  -- Update this block's end_line
+  block.end_line = old_start + new_count - 1
+
+  -- Shift all subsequent blocks' line numbers
+  for i = block_idx + 1, #self.blocks do
+    local b = self.blocks[i]
+    b.start_line = b.start_line + shift
+    b.content_start = b.content_start + shift
+    if b.end_line then
+      b.end_line = b.end_line + shift
+    end
+    -- Re-position header extmark
+    if b.header_extmark then
+      local hl_group = get_registry().hl_group(b.tag, "HeaderBg")
+      pcall(vim.api.nvim_buf_set_extmark, self.bufnr, ns, b.start_line, 0, {
+        id = b.header_extmark,
+        line_hl_group = hl_group,
+      })
+    end
+  end
+
+  -- Apply per-line highlights via extmarks
+  if highlights then
+    for _, h in ipairs(highlights) do
+      local target_line = old_start + h.line
+      if target_line >= 0 and target_line < vim.api.nvim_buf_line_count(self.bufnr) then
+        pcall(vim.api.nvim_buf_set_extmark, self.bufnr, ns, target_line, 0, {
+          line_hl_group = h.hl,
+        })
+      end
+    end
+  end
+
+  -- Refresh borders
+  self:_update_borders(block)
+
+  -- Re-collapse if it was collapsed
+  if was_collapsed then
     self:_collapse(block)
   end
 end

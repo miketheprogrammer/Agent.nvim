@@ -572,6 +572,142 @@ function M.open()
   end
 end
 
+--- Tool-specific input formatters.
+--- Each returns { lines: string[], highlights: { line: integer, hl: string }[] }.
+local tool_formatters = {
+  Edit = function(input)
+    local lines = {}
+    local highlights = {}
+    lines[#lines + 1] = input.file_path or "(unknown file)"
+    highlights[#highlights + 1] = { line = 0, hl = "Directory" }
+
+    if input.old_string and input.new_string then
+      local diff_text = vim.diff(input.old_string .. "\n", input.new_string .. "\n", {
+        result_type = "unified",
+        ctxlen = 2,
+      })
+      if diff_text and diff_text ~= "" then
+        local diff_lines = vim.split(diff_text, "\n", { plain = true })
+        -- Skip the --- / +++ header (first 2 lines)
+        local start_i = 1
+        for i, dl in ipairs(diff_lines) do
+          if dl:sub(1, 2) == "@@" then
+            start_i = i
+            break
+          end
+        end
+        for i = start_i, #diff_lines do
+          local dl = diff_lines[i]
+          if dl ~= "" or i < #diff_lines then
+            local offset = #lines
+            lines[#lines + 1] = dl
+            if dl:sub(1, 1) == "+" then
+              highlights[#highlights + 1] = { line = offset, hl = "DiffAdd" }
+            elseif dl:sub(1, 1) == "-" then
+              highlights[#highlights + 1] = { line = offset, hl = "DiffDelete" }
+            elseif dl:sub(1, 2) == "@@" then
+              highlights[#highlights + 1] = { line = offset, hl = "DiffChange" }
+            end
+          end
+        end
+      end
+    end
+    return { lines = lines, highlights = highlights }
+  end,
+
+  Write = function(input)
+    local lines = {}
+    local highlights = {}
+    lines[#lines + 1] = input.file_path or "(unknown file)"
+    highlights[#highlights + 1] = { line = 0, hl = "Directory" }
+    if input.content then
+      local preview = input.content:sub(1, 500)
+      for _, l in ipairs(vim.split(preview, "\n", { plain = true })) do
+        lines[#lines + 1] = l
+      end
+      if #input.content > 500 then
+        lines[#lines + 1] = "... (truncated)"
+      end
+    end
+    return { lines = lines, highlights = highlights }
+  end,
+
+  Read = function(input)
+    local lines = {}
+    local highlights = {}
+    local path = input.file_path or "(unknown file)"
+    if input.offset or input.limit then
+      path = path .. string.format(" [%s:%s]",
+        input.offset and tostring(input.offset) or "1",
+        input.limit and tostring(input.limit) or "end")
+    end
+    lines[#lines + 1] = path
+    highlights[#highlights + 1] = { line = 0, hl = "Directory" }
+    return { lines = lines, highlights = highlights }
+  end,
+
+  Bash = function(input)
+    local lines = {}
+    local highlights = {}
+    if input.description then
+      lines[#lines + 1] = "# " .. input.description
+      highlights[#highlights + 1] = { line = 0, hl = "Comment" }
+    end
+    if input.command then
+      lines[#lines + 1] = "$ " .. input.command
+      highlights[#highlights + 1] = { line = #lines - 1, hl = "String" }
+    end
+    return { lines = lines, highlights = highlights }
+  end,
+
+  Glob = function(input)
+    local lines = {}
+    local highlights = {}
+    lines[#lines + 1] = input.pattern or ""
+    highlights[#highlights + 1] = { line = 0, hl = "String" }
+    if input.path then
+      lines[#lines + 1] = "in: " .. input.path
+      highlights[#highlights + 1] = { line = 1, hl = "Directory" }
+    end
+    return { lines = lines, highlights = highlights }
+  end,
+
+  Grep = function(input)
+    local lines = {}
+    local highlights = {}
+    lines[#lines + 1] = "/" .. (input.pattern or "") .. "/"
+    highlights[#highlights + 1] = { line = 0, hl = "String" }
+    if input.path then
+      lines[#lines + 1] = "in: " .. input.path
+      highlights[#highlights + 1] = { line = 1, hl = "Directory" }
+    end
+    return { lines = lines, highlights = highlights }
+  end,
+}
+
+--- Default formatter for unrecognized tools.
+---@param input table
+---@return { lines: string[], highlights: table[] }
+local function format_tool_default(input)
+  local preview = vim.inspect(input):sub(1, 400)
+  return {
+    lines = vim.split(preview, "\n", { plain = true }),
+    highlights = {},
+  }
+end
+
+--- Format a tool_use block's input for display.
+---@param name string Tool name
+---@param input table Tool input
+---@return { lines: string[], highlights: table[] }
+local function format_tool_input(name, input)
+  local formatter = tool_formatters[name]
+  if formatter then
+    return formatter(input)
+  end
+  return format_tool_default(input)
+end
+
 --- Send the current input as a message
 function M.send()
   ensure_deps()
@@ -650,8 +786,13 @@ function M.send()
       local tag = registry:tag_for_native(info.type)
       if tag and state.render then
         native_blocks[info.index] = tag
+        -- Pass tool name/id so the renderer shows them in the header
+        local attrs = {}
+        if info.type == "tool_use" then
+          attrs = { name = info.name, id = info.id }
+        end
         state.render:process({
-          { type = "tag_open", tag = tag, attrs = {} },
+          { type = "tag_open", tag = tag, attrs = attrs },
         })
       end
     end,
@@ -685,8 +826,24 @@ function M.send()
       end
     end,
 
-    on_tool_call = function(tool_name, _tool_input)
-      state.chat_buf:append_tool_use(tool_name, _tool_input or {})
+    on_tool_use = function(tu)
+      -- Full tool_use content block arrived — find matching renderer block
+      -- and inject formatted content
+      if not state.render or not tu.id then return end
+      local blocks = state.render.blocks
+      local block_idx
+      for i, b in ipairs(blocks) do
+        if b.attrs and b.attrs.id == tu.id then
+          block_idx = i
+          break
+        end
+      end
+      if not block_idx then return end
+
+      local formatted = format_tool_input(tu.name or "", tu.input or {})
+      vim.schedule(function()
+        state.render:inject_block_content(block_idx, formatted.lines, formatted.highlights)
+      end)
     end,
 
     on_complete = function(result)
@@ -885,8 +1042,9 @@ function M.load_session(session_info)
             end
 
           elseif block.type == "tool_use" then
-            local input_preview = vim.inspect(block.input):sub(1, 500)
-            render:render_block("tool", input_preview, { name = block.name })
+            local formatted = format_tool_input(block.name or "", block.input or {})
+            local content = table.concat(formatted.lines, "\n")
+            render:render_block("tool", content, { name = block.name })
           end
         end
 
