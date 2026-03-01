@@ -399,6 +399,15 @@ function M._register_commands()
       M.resume()
     end
   end, { nargs = "?", desc = "Resume a session" })
+
+  vim.api.nvim_create_user_command("NexusInline", function(cmd_opts)
+    local opts = {}
+    if cmd_opts.range == 2 then
+      opts.line1 = cmd_opts.line1
+      opts.line2 = cmd_opts.line2
+    end
+    require("nexus-inline").open(opts)
+  end, { range = true, desc = "Inline prompt for code editing" })
 end
 
 -- Register commands at module load time so they're always available
